@@ -3,6 +3,36 @@
 Personal collection of [ScriptCat](https://docs.scriptcat.org/en/docs/dev) userscripts,
 synced across devices via git + ScriptCat's **Subscription Mode**.
 
+## ⚠️ This repo is public — never commit sensitive information
+
+This repo must be public for `raw.githubusercontent.com` to serve files to ScriptCat
+without authentication (see rationale below). That means **anything committed here is
+visible to anyone, forever** — including in old commits after you "remove" it later.
+
+Never put any of the following directly in a script or commit:
+
+- API keys, tokens, client secrets, webhook URLs
+- Passwords, session cookies, auth headers
+- Personal data (real name, address, phone, private account IDs) beyond what's needed
+  for a `@match` pattern
+- Internal/company URLs or infrastructure details
+- Anything you wouldn't want indexed by search engines or scraped by bots (GitHub is
+  scraped constantly and aggressively — secrets committed even briefly get harvested
+  within minutes)
+
+Where that kind of data legitimately needs to live:
+
+- **Per-device runtime values** (API keys you personally use, tokens, etc.) → store them
+  with `GM_setValue` / `GM_getValue` at runtime, entered once via a prompt or the
+  ScriptCat dashboard's storage editor. They stay local to that device (or synced only
+  through your private ScriptCat cloud sync, not through git).
+- **Site selectors / URLs that reveal a private/internal tool** → keep the script generic
+  and inject the specifics via `GM_getValue` instead of hardcoding them.
+
+If you ever commit something sensitive by mistake: rotate/revoke the credential
+immediately — a `git revert` or force-push does **not** remove it from GitHub's caches,
+forks, or anyone who already pulled it. Treat any committed secret as burned.
+
 ## How sync works
 
 1. Every script lives in `scripts/*.user.js`, each with a proper `==UserScript==` header.
@@ -34,9 +64,7 @@ scriptcat-scripts/
 
 1. Install ScriptCat extension (Chrome / Edge / Firefox).
 2. Open this URL in the browser — ScriptCat intercepts `.sub.js` links automatically:
-
    https://raw.githubusercontent.com/cizzoo/scriptcat-scripts/main/subscription.user.sub.js
-   
 3. Confirm the install dialog. Done — all scripts in the subscription are now installed
    and will update silently going forward.
 
@@ -45,7 +73,9 @@ scriptcat-scripts/
 1. Copy `scripts/_template.user.js` to `scripts/<name>.user.js`.
 2. Fill in metadata: `@name`, `@namespace`, `@match`, `@version` (start at `0.1.0`), `@updateURL`, `@downloadURL`.
 3. Add a `@scriptUrl` line for it inside `subscription.user.sub.js`.
-4. Commit and push.
+4. Before committing: check the diff for anything sensitive (keys, tokens, cookies,
+   internal URLs) — see the warning above. Once pushed, treat it as public forever.
+5. Commit and push.
 
 ## Versioning convention
 
