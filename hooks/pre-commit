@@ -1,0 +1,5 @@
+#!/bin/bash
+set -e
+ROOT="$(git rev-parse --show-toplevel)"
+python3 "$ROOT/sync_subscription.py" --repo-root "$ROOT"
+git add "$ROOT/subscription.user.sub.js"

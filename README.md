@@ -72,10 +72,15 @@ scriptcat-scripts/
 
 1. Copy `scripts/_template.user.js` to `scripts/<name>.user.js`.
 2. Fill in metadata: `@name`, `@namespace`, `@match`, `@version` (start at `0.1.0`), `@updateURL`, `@downloadURL`.
-3. Add a `@scriptUrl` line for it inside `subscription.user.sub.js`.
+3. Add a `@scriptUrl` line for it inside `subscription.user.sub.js`. Read more in [Update the subscription file automatically](#update-the-subscription-file-automatically).
 4. Before committing: check the diff for anything sensitive (keys, tokens, cookies,
    internal URLs) — see the warning above. Once pushed, treat it as public forever.
 5. Commit and push.
+
+### Update the subscription file automatically
+
+You can run `python3 sync_subscription.py` to scan `scripts/` and rewrite `subscription.user.sub.js` automatically. See the script's docstring for usage.
+Or add it as a pre-commit hook to keep the subscription file in sync automatically, read more in [Git Repo → Hooks](#hooks).
 
 ## Versioning convention
 
@@ -91,3 +96,19 @@ https://raw.githubusercontent.com/cizzoo/scriptcat-scripts/main/<path>
 ```
 
 Use `main` (or your default branch) unless you're testing on a feature branch.
+
+# Git Repo
+
+## Hooks
+
+For convenience, you can add a pre-commit hook to automatically update the subscription file whenever scripts change. See `sync_subscription.py` for details.
+
+You'll find a sample pre-commit hook below. Make sure to give it execute permissions:
+```bash
+chmod +x hooks/pre-commit
+```
+
+And then set up the hook in your local git repo:
+```bash
+git config core.hooksPath hooks
+```

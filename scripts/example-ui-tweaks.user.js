@@ -3,7 +3,7 @@
 // @namespace    https://github.com/cizzoo/scriptcat-scripts
 // @version      0.1.0
 // @description  Demo script: hide clutter, add a floating shortcut button
-// @author       You
+// @author       cizzoo
 // @match        https://example.com/*
 // @grant        GM_addStyle
 // @grant        GM_setValue
