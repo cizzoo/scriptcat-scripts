@@ -9,8 +9,8 @@
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @run-at       document-idle
-// @updateURL    https://raw.githubusercontent.com/cizzoo/scriptcat-scripts/main/scripts/claude-usage-widget.user.js
-// @downloadURL  https://raw.githubusercontent.com/cizzoo/scriptcat-scripts/main/scripts/claude-usage-widget.user.js
+// @updateURL    https://raw.githubusercontent.com/cizzoo/scriptcat-scripts/main/scripts/claude/claude-usage-widget.user.js
+// @downloadURL  https://raw.githubusercontent.com/cizzoo/scriptcat-scripts/main/scripts/claude/claude-usage-widget.user.js
 // ==/UserScript==
 
 /*

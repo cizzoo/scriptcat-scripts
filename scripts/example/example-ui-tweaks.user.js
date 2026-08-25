@@ -8,8 +8,8 @@
 // @grant        GM_addStyle
 // @grant        GM_setValue
 // @grant        GM_getValue
-// @updateURL    https://raw.githubusercontent.com/cizzoo/scriptcat-scripts/main/scripts/example-ui-tweaks.user.js
-// @downloadURL  https://raw.githubusercontent.com/cizzoo/scriptcat-scripts/main/scripts/example-ui-tweaks.user.js
+// @updateURL    https://raw.githubusercontent.com/cizzoo/scriptcat-scripts/main/scripts/example/example-ui-tweaks.user.js
+// @downloadURL  https://raw.githubusercontent.com/cizzoo/scriptcat-scripts/main/scripts/example/example-ui-tweaks.user.js
 // @run-at       document-idle
 // ==/UserScript==
 

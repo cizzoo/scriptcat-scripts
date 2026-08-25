@@ -54,8 +54,15 @@ installed locally, so it doesn't conflict with the git-based subscription flow a
 scriptcat-scripts/
 ├── README.md
 ├── subscription.user.sub.js   <- install THIS link on every device
-├── scripts/                   <- one file per userscript
-│   └── example-ui-tweaks.user.js
+├── scripts/                   <- one subfolder per target site, one file per userscript
+│   ├── _template.user.js
+│   ├── claude/
+│   │   ├── claude-project-switcher.user.js
+│   │   └── claude-usage-widget.user.js
+│   ├── google/
+│   │   └── google-account-switcher.user.js
+│   └── example/
+│       └── example-ui-tweaks.user.js
 ├── lib/                       <- shared code loaded via @require
 └── docs/                      <- per-script notes, changelogs
 ```
@@ -70,7 +77,8 @@ scriptcat-scripts/
 
 ## Adding a new script
 
-1. Copy `scripts/_template.user.js` to `scripts/<name>.user.js`.
+1. Copy `scripts/_template.user.js` to `scripts/<site>/<name>.user.js` (e.g. `scripts/claude/`
+   for claude.ai, `scripts/google/` for google.com — create the folder if the site is new).
 2. Fill in metadata: `@name`, `@namespace`, `@match`, `@version` (start at `0.1.0`), `@updateURL`, `@downloadURL`.
 3. Add a `@scriptUrl` line for it inside `subscription.user.sub.js`. Read more in [Update the subscription file automatically](#update-the-subscription-file-automatically).
 4. Before committing: check the diff for anything sensitive (keys, tokens, cookies,

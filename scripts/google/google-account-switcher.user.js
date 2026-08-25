@@ -17,8 +17,8 @@
 // @match        *://myaccount.google.com/*
 // @grant        none
 // @run-at       document-start
-// @updateURL    https://raw.githubusercontent.com/cizzoo/scriptcat-scripts/main/scripts/google-account-switcher.user.js
-// @downloadURL  https://raw.githubusercontent.com/cizzoo/scriptcat-scripts/main/scripts/google-account-switcher.user.js
+// @updateURL    https://raw.githubusercontent.com/cizzoo/scriptcat-scripts/main/scripts/google/google-account-switcher.user.js
+// @downloadURL  https://raw.githubusercontent.com/cizzoo/scriptcat-scripts/main/scripts/google/google-account-switcher.user.js
 // ==/UserScript==
 
 (function () {

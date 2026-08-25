@@ -3,8 +3,9 @@
 sync_subscription.py
 
 Regenerates the @scriptUrl list in subscription.user.sub.js from the current
-contents of scripts/*.user.js, and bumps the subscription's own @version when
-the set of scripts changes.
+contents of scripts/**/*.user.js (recursing into per-site subfolders, e.g.
+scripts/claude/, scripts/google/), and bumps the subscription's own @version
+when the set of scripts changes.
 
 Intended to run locally before a commit (e.g. as a git pre-commit hook, or
 invoked manually). It only touches the @scriptUrl lines and the @version line
@@ -55,7 +56,7 @@ def die(message: str, code: int) -> None:
     sys.exit(code)
 
 
-def read_script_header(path: Path) -> dict:
+def read_script_header(path: Path, scripts_dir: Path) -> dict:
     """Extract @name and @version from a userscript's metadata block."""
     text = path.read_text(encoding="utf-8")
 
@@ -70,11 +71,13 @@ def read_script_header(path: Path) -> dict:
     if not version_match:
         die(f"{path.name}: missing @version in metadata block", 2)
 
+    rel_path = path.relative_to(scripts_dir).as_posix()
+
     return {
         "name": name_match.group(1),
         "version": version_match.group(1),
         "filename": path.name,
-        "url": f"{RAW_BASE}/scripts/{path.name}",
+        "url": f"{RAW_BASE}/scripts/{rel_path}",
     }
 
 
@@ -121,14 +124,14 @@ def main() -> None:
 
     script_files = sorted(
         p
-        for p in scripts_dir.glob("*.user.js")
+        for p in scripts_dir.glob("**/*.user.js")
         if p.name != "_template.user.js"
     )
 
     if not script_files:
         print("warning: no scripts found in scripts/ (besides _template.user.js)")
 
-    headers = [read_script_header(p) for p in script_files]
+    headers = [read_script_header(p, scripts_dir) for p in script_files]
     target_urls = [h["url"] for h in headers]
 
     sub_text = sub_path.read_text(encoding="utf-8")
