@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Claude Usage Widget
 // @namespace    https://github.com/cizzoo/scriptcat-scripts
-// @version      0.1.0
-// @description  Floating collapsible widget showing Claude daily (5h window) and weekly usage, with reset time and model label
+// @version      0.3.0
+// @description  Floating dockable widget showing Claude daily (5h window) and weekly usage, with reset time and model label. Collapsible in place AND slides off-screen to the right via a separate tab.
 // @author       cizzoo
 // @match        https://claude.ai/*
 // @grant        GM_addStyle
@@ -26,8 +26,8 @@
  * - Auth: plain same-origin `fetch` with credentials: 'include'. This reuses
  *   the browser's existing claude.ai session cookie automatically. The
  *   cookie itself is NEVER read, stored, or logged by this script.
- * 
- * - Poll interval: 5 minutes (300000ms) 
+ *
+ * - Poll interval: 5 minutes (300000ms)
  *
  * - Request timeout: 5 minutes (300000ms) per the spec, via AbortController.
  *   In practice the endpoint responds in well under a second; the long
@@ -38,6 +38,24 @@
  *   /api/organizations on every poll. Nothing sensitive: it's an org id,
  *   not a credential, and it never leaves this device (GM storage is local
  *   unless you've turned on ScriptCat's own cloud sync separately).
+ *
+ * - DELIBERATE STYLE-SPEC DIVERGENCE (v0.2.0): docs/claude-ai-style-spec.md
+ *   was updated alongside this version to make bottom-right + right-edge
+ *   dock the documented default (previously bottom-left). This widget is the
+ *   reference implementation for that placement; see the spec's changelog
+ *   note for rationale (this panel intentionally docks past the viewport
+ *   edge, which sidesteps the original overlap concern with the composer).
+ *
+ * - Two INDEPENDENT toggles, each with its own persisted state (v0.3.0):
+ *     1. Collapse (header click, ▾/▸): shrinks the panel in place
+ *        (220px -> 150px) and hides the weekly block. Panel stays anchored
+ *        and visible. This is the v0.1.0 behavior, reinstated.
+ *     2. Dock (side tab click, ▸/◂): slides the whole panel off-screen to
+ *        the right via `transform: translateX(...)`, leaving only a
+ *        14px sliver with an arrow inside the viewport. Independent of
+ *        collapse state - either can be toggled regardless of the other.
+ *   Both persist via GM storage across reloads, applied via a pre-paint
+ *   class so neither visibly "snaps" on load.
  */
 
 (function () {
@@ -46,7 +64,11 @@
   const NS = "sc-claude-usage";
   const REQUEST_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
   const POLL_INTERVAL_MS = 300 * 1000; // refresh every 5 minutes while page is open
-  const COLLAPSE_KEY = "claudeUsageWidget.collapsed";
+  const DOCKED_KEY = "claudeUsageWidget.docked"; // true = slid out to the right, only tab visible
+  const COLLAPSE_KEY = "claudeUsageWidget.collapsed"; // true = shrunk in place, weekly block hidden
+  const PANEL_WIDTH = 220;
+  const PANEL_WIDTH_COLLAPSED = 150;
+  const TAB_WIDTH = 14; // sliver left visible when docked - as narrow as still clickable
 
   GM_addStyle(`
     #${NS}-root {
@@ -61,28 +83,54 @@
       border: 1px solid #3a3a37;
       border-radius: 10px;
       box-shadow: 0 4px 16px rgba(0,0,0,0.35);
-      width: 220px;
-      overflow: hidden;
-      user-select: none;
+      width: ${PANEL_WIDTH}px;
+      overflow: visible;
+      transition: transform 0.3s ease, width 0.3s ease;
+      transform: translateX(0);
     }
     #${NS}-root.${NS}-collapsed {
-      width: 150px;
+      width: ${PANEL_WIDTH_COLLAPSED}px;
+    }
+    #${NS}-root.${NS}-docked {
+      transform: translateX(${PANEL_WIDTH - TAB_WIDTH}px);
+    }
+    #${NS}-root.${NS}-docked.${NS}-collapsed {
+      transform: translateX(${PANEL_WIDTH_COLLAPSED - TAB_WIDTH}px);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #${NS}-root {
+        transition: none;
+      }
+    }
+    #${NS}-content {
+      overflow: hidden;
+      border-radius: 10px;
     }
     #${NS}-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
+      width: 100%;
       padding: 6px 10px;
-      cursor: pointer;
       background: #2f2f2c;
+      border: none;
+      cursor: pointer;
+      font: inherit;
+      color: inherit;
+      text-align: left;
+    }
+    #${NS}-header:focus-visible {
+      outline: 1px solid #d97757;
+      outline-offset: -1px;
     }
     #${NS}-title {
       font-weight: 600;
       font-size: 11px;
       letter-spacing: 0.02em;
       color: #cfcfca;
+      user-select: none;
     }
-    #${NS}-toggle {
+    #${NS}-collapse-arrow {
       font-size: 10px;
       color: #9a9a94;
       pointer-events: none;
@@ -105,10 +153,12 @@
       font-size: 10.5px;
       color: #b7b7b1;
       margin-bottom: 2px;
+      user-select: none;
     }
     .${NS}-pct {
       font-weight: 600;
       color: #e5e5e2;
+      user-select: text;
     }
     .${NS}-bar-track {
       height: 5px;
@@ -122,6 +172,11 @@
       background: #d97757;
       transition: width 0.3s ease;
     }
+    @media (prefers-reduced-motion: reduce) {
+      .${NS}-bar-fill {
+        transition: none;
+      }
+    }
     .${NS}-bar-fill.${NS}-warn {
       background: #e0b23c;
     }
@@ -132,11 +187,13 @@
       font-size: 10px;
       color: #8f8f89;
       margin-top: 4px;
+      user-select: none;
     }
     #${NS}-footer {
       display: flex;
       justify-content: flex-end;
       padding: 4px 10px 6px;
+      user-select: none;
     }
     #${NS}-model {
       font-size: 9.5px;
@@ -147,35 +204,79 @@
       font-size: 10px;
       color: #d15252;
     }
+    #${NS}-tab {
+      position: absolute;
+      left: -1px;
+      top: 50%;
+      transform: translate(-100%, -50%);
+      width: ${TAB_WIDTH}px;
+      height: 40px;
+      background: #2f2f2c;
+      border: 1px solid #3a3a37;
+      border-right: none;
+      border-radius: 8px 0 0 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+    }
+    #${NS}-tab-arrow {
+      font-size: 12px;
+      color: #9a9a94;
+      pointer-events: none;
+      transition: color 0.15s ease;
+    }
+    #${NS}-tab:hover #${NS}-tab-arrow,
+    #${NS}-tab:focus-visible #${NS}-tab-arrow {
+      color: #e5e5e2;
+    }
+    #${NS}-tab:focus-visible {
+      outline: 1px solid #d97757;
+      outline-offset: 2px;
+    }
+    /* Below 768px viewport width there is no mobile layout for injected chrome. */
+    @media (max-width: 768px) {
+      #${NS}-root {
+        display: none;
+      }
+    }
   `);
 
   const root = document.createElement("div");
   root.id = `${NS}-root`;
   root.innerHTML = `
-    <div id="${NS}-header">
-      <span id="${NS}-title">Claude Usage</span>
-      <span id="${NS}-toggle">▾</span>
-    </div>
-    <div id="${NS}-body">
-      <div class="${NS}-row">
-        <div class="${NS}-label"><span>Daily (5h)</span><span class="${NS}-pct" id="${NS}-daily-pct">–</span></div>
-        <div class="${NS}-bar-track"><div class="${NS}-bar-fill" id="${NS}-daily-bar" style="width:0%"></div></div>
+    <button type="button" id="${NS}-tab" aria-expanded="true" aria-controls="${NS}-content">
+      <span id="${NS}-tab-arrow">▸</span>
+    </button>
+    <div id="${NS}-content">
+      <button type="button" id="${NS}-header" aria-expanded="true" aria-controls="${NS}-body">
+        <span id="${NS}-title">Claude Usage</span>
+        <span id="${NS}-collapse-arrow">▾</span>
+      </button>
+      <div id="${NS}-body">
+        <div class="${NS}-row">
+          <div class="${NS}-label"><span>Daily (5h)</span><span class="${NS}-pct" id="${NS}-daily-pct" aria-live="polite">–</span></div>
+          <div class="${NS}-bar-track"><div class="${NS}-bar-fill" id="${NS}-daily-bar" style="width:0%"></div></div>
+        </div>
+        <div id="${NS}-weekly-block" class="${NS}-row">
+          <div class="${NS}-label"><span>Weekly (7d)</span><span class="${NS}-pct" id="${NS}-weekly-pct" aria-live="polite">–</span></div>
+          <div class="${NS}-bar-track"><div class="${NS}-bar-fill" id="${NS}-weekly-bar" style="width:0%"></div></div>
+        </div>
+        <div id="${NS}-reset" aria-live="polite">Resets: –</div>
       </div>
-      <div id="${NS}-weekly-block" class="${NS}-row">
-        <div class="${NS}-label"><span>Weekly (7d)</span><span class="${NS}-pct" id="${NS}-weekly-pct">–</span></div>
-        <div class="${NS}-bar-track"><div class="${NS}-bar-fill" id="${NS}-weekly-bar" style="width:0%"></div></div>
+      <div id="${NS}-footer">
+        <span id="${NS}-model">–</span>
       </div>
-      <div id="${NS}-reset">Resets: –</div>
-    </div>
-    <div id="${NS}-footer">
-      <span id="${NS}-model">–</span>
     </div>
   `;
   document.body.appendChild(root);
 
   const els = {
+    tab: root.querySelector(`#${NS}-tab`),
+    tabArrow: root.querySelector(`#${NS}-tab-arrow`),
     header: root.querySelector(`#${NS}-header`),
-    toggle: root.querySelector(`#${NS}-toggle`),
+    collapseArrow: root.querySelector(`#${NS}-collapse-arrow`),
     dailyPct: root.querySelector(`#${NS}-daily-pct`),
     dailyBar: root.querySelector(`#${NS}-daily-bar`),
     weeklyPct: root.querySelector(`#${NS}-weekly-pct`),
@@ -184,21 +285,52 @@
     model: root.querySelector(`#${NS}-model`),
   };
 
-  function applyCollapsedState(collapsed) {
-    root.classList.toggle(`${NS}-collapsed`, collapsed);
-    els.toggle.textContent = collapsed ? "▸" : "▾";
+  function applyDockedState(docked) {
+    root.classList.toggle(`${NS}-docked`, docked);
+    // Arrow points toward the action that will happen on click:
+    // docked -> clicking slides it back in (points left, into the panel).
+    // undocked -> clicking slides it out (points right, off-screen).
+    els.tabArrow.textContent = docked ? "◂" : "▸";
+    els.tab.setAttribute("aria-expanded", String(!docked));
   }
 
-  (async function initCollapsedState() {
-    const stored = await GM_getValue(COLLAPSE_KEY, false);
-    applyCollapsedState(!!stored);
+  function applyCollapsedState(collapsed) {
+    root.classList.toggle(`${NS}-collapsed`, collapsed);
+    els.collapseArrow.textContent = collapsed ? "▸" : "▾";
+    els.header.setAttribute("aria-expanded", String(!collapsed));
+  }
+
+  (async function initToggleStates() {
+    const [dockedStored, collapsedStored] = await Promise.all([
+      GM_getValue(DOCKED_KEY, false),
+      GM_getValue(COLLAPSE_KEY, false),
+    ]);
+    applyDockedState(!!dockedStored);
+    applyCollapsedState(!!collapsedStored);
   })();
+
+  els.tab.addEventListener("click", async () => {
+    const nowDocked = !root.classList.contains(`${NS}-docked`);
+    applyDockedState(nowDocked);
+    await GM_setValue(DOCKED_KEY, nowDocked);
+  });
 
   els.header.addEventListener("click", async () => {
     const nowCollapsed = !root.classList.contains(`${NS}-collapsed`);
     applyCollapsedState(nowCollapsed);
     await GM_setValue(COLLAPSE_KEY, nowCollapsed);
   });
+
+  // Hide while a modal/dialog is open, per style spec (z-index ceiling for
+  // passive panels sits above app overlays, so defer to them rather than
+  // floating over them).
+  function syncVisibilityAgainstDialogs() {
+    const hasOpenDialog = !!document.querySelector('[role="dialog"]');
+    root.style.display = hasOpenDialog ? "none" : "";
+  }
+  const dialogObserver = new MutationObserver(syncVisibilityAgainstDialogs);
+  dialogObserver.observe(document.body, { childList: true, subtree: true });
+  syncVisibilityAgainstDialogs();
 
   function setBarLevel(barEl, pct) {
     barEl.style.width = `${Math.min(100, Math.max(0, pct))}%`;
