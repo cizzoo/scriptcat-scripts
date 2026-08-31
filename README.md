@@ -35,7 +35,8 @@ forks, or anyone who already pulled it. Treat any committed secret as burned.
 
 ## How sync works
 
-1. Every script lives in `scripts/*.user.js`, each with a proper `==UserScript==` header.
+1. Every script lives in `scripts/<vendor>/<name>.user.js` (one subfolder per target site),
+   each with a proper `==UserScript==` header.
 2. `subscription.user.sub.js` (repo root) is a `==UserSubscribe==` manifest that lists
    every script's raw GitHub URL under `@scriptUrl`.
 3. On **each device**, you install ONLY the subscription link (see below). ScriptCat then
