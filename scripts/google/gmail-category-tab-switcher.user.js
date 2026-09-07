@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Gmail Keyboard Cycling (Category Tabs + Message List)
 // @namespace    https://github.com/cizzoo/scriptcat-scripts
-// @version      0.2.1
-// @description  Alt+PageUp/PageDown cycles Gmail's category tabs (Primary/Social/...). Alt+Up/Down moves a visual cursor row-by-row through the message list, without opening or selecting anything. Both no-op where their target isn't present (e.g. inside an open email).
+// @version      0.3.0
+// @description  Alt+PageUp/PageDown cycles Gmail's category tabs (Primary/Social/...). Alt+Up/Down moves a visual cursor row-by-row through the message list. Enter/Space opens the email under the cursor (only once a cursor is active, and never while typing in an editable field). All shortcuts no-op where their target isn't present (e.g. inside an open email).
 // @author       cizzoo
 // @match        https://mail.google.com/mail/*
 // @grant        GM_addStyle
@@ -126,6 +126,40 @@
  *   dispatches synthetic mouse events). `view` is optional on
  *   MouseEventInit and not required for React to pick up the dispatch, so
  *   it was removed rather than sourcing "the correct" window reference.
+ *
+ * ----------------------------------------------------------------------
+ * PART 3 - OPEN CURSOR ROW (Enter / Space) - added v0.3.0
+ * ----------------------------------------------------------------------
+ *
+ * SCOPE, CONFIRMED WITH THE USER
+ *   - Fires ONLY if a cursor row is already active (set by Part 2). No
+ *     cursor set -> no-op. We deliberately do NOT fall back to "open row
+ *     0" - Enter/Space are unmodified keys used everywhere else in the
+ *     page (form submits, buttons, checkboxes), so an unconditional
+ *     default-to-row-0 would risk firing in contexts the user didn't
+ *     intend as "open the Alt+Up/Down cursor's row".
+ *   - Fires ONLY when the focused element is not editable (input,
+ *     textarea, select, contenteditable) - see isEditableTarget(). This is
+ *     the primary guard against hijacking Enter/Space while the user is
+ *     typing in Gmail's search box, compose window, a label-rename field,
+ *     etc.
+ *
+ * WHY CLICK AN INNER [role="link"], NOT THE <tr> ITSELF
+ *   The confirmed markup's row click-to-open behaviour lives on an inner
+ *   `[role="link"]` wrapper around the subject/snippet (class "xS" in the
+ *   sample), not uniformly across the whole <tr>. Dispatching the
+ *   synthetic click on the <tr> risks landing effectively "nowhere" or on
+ *   an unrelated cell's own jsaction (star toggle, hover action icons).
+ *   Querying for the first `[role="link"]` descendant and clicking there
+ *   mirrors what a real user does when opening a thread by its subject.
+ *
+ * NO MODIFIER GUARD, ON PURPOSE
+ *   Unlike Parts 1 and 2 (which require exactly Alt with no other
+ *   modifiers), Part 3 requires NO modifiers at all - Enter and Space are
+ *   used bare by both Gmail and this feature. Any modifier held (Ctrl,
+ *   Alt, Shift, Meta) means "not our shortcut" and the key passes through
+ *   untouched, which matters for things like Ctrl+Enter to send a compose
+ *   draft.
  */
 
 (function () {
@@ -256,27 +290,96 @@
     return true;
   }
 
-  function onKeyDown(e) {
-    if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+  /**
+   * Open the email currently under our cursor (Enter/Space).
+   *
+   * SCOPE (deliberately narrow, confirmed):
+   *   - Only fires if a cursor is already set AND still attached to the
+   *     document. No cursor -> no-op; we do NOT default to row 0, since
+   *     Enter/Space are bare (no modifier) keys used constantly for other
+   *     purposes (form submission, checkboxes, buttons) and an unconditional
+   *     default would make this feature fire in unintended contexts.
+   *   - Only fires when focus is not inside an editable context (input,
+   *     textarea, contenteditable) - checked by isEditableTarget() below.
+   *     This is the main guard against hijacking Enter/Space while typing
+   *     in Gmail's search box, compose window, or any other text field.
+   *
+   * WHY WE CLICK A ROW-INTERNAL LINK INSTEAD OF THE <tr> ITSELF
+   *   In the confirmed markup, the row's own click handling lives on an
+   *   inner `[role="link"]` div (e.g. class "xS") wrapping the
+   *   subject/snippet, not uniformly on the <tr>. Clicking the <tr> directly
+   *   risks landing on a cell whose own jsaction is unrelated (e.g. the
+   *   star toggle's <td>, or the hover-only action toolbar's <td>). We
+   *   query for the first `[role="link"]` inside the row and dispatch the
+   *   synthetic click there, mirroring how a real user opens a thread by
+   *   clicking its subject/snippet area.
+   *
+   * SYNTHETIC EVENT CAVEAT (see v0.2.1 fix above)
+   *   Do NOT add `view: window` to these MouseEvent constructors - that is
+   *   exactly what broke Alt+PageUp/PageDown before. Omit `view` here too.
+   */
+  function isEditableTarget(target) {
+    if (!target) return false;
+    const tag = target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    if (target.isContentEditable) return true;
+    return false;
+  }
 
-    if (e.key === "PageUp" || e.key === "PageDown") {
-      const direction = e.key === "PageUp" ? -1 : 1;
-      const handled = cycleTab(direction);
-      if (handled) {
-        e.preventDefault();
-        e.stopPropagation();
+  function openCursorRow() {
+    const rows = findMessageRows();
+    if (rows.length === 0) return false;
+
+    const idx = findCurrentCursorRow(rows);
+    if (idx === -1) return false; // no active cursor -> correct no-op
+
+    const row = rows[idx];
+    const openTarget = row.querySelector('[role="link"]') || row;
+
+    openTarget.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+    openTarget.dispatchEvent(new MouseEvent("mouseup", { bubbles: true, cancelable: true }));
+    openTarget.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    return true;
+  }
+
+  function onKeyDown(e) {
+    if (e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      if (e.key === "PageUp" || e.key === "PageDown") {
+        const direction = e.key === "PageUp" ? -1 : 1;
+        const handled = cycleTab(direction);
+        if (handled) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        return;
+      }
+
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        const direction = e.key === "ArrowUp" ? -1 : 1;
+        const handled = moveCursor(direction);
+        if (handled) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        return;
       }
       return;
     }
 
-    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
-      const direction = e.key === "ArrowUp" ? -1 : 1;
-      const handled = moveCursor(direction);
-      if (handled) {
-        e.preventDefault();
-        e.stopPropagation();
+    // Enter/Space: bare keys, no modifiers at all. Deliberately strict -
+    // any modifier held means "not our shortcut", so a stray Ctrl/Alt/Shift
+    // combo involving Enter/Space (e.g. Ctrl+Enter to send in compose)
+    // passes through untouched.
+    if (!e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      if (e.key === "Enter" || e.key === " " || e.key === "Spacebar") {
+        if (isEditableTarget(e.target)) return; // typing somewhere - never hijack
+        const handled = openCursorRow();
+        if (handled) {
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        return;
       }
-      return;
     }
   }
 
